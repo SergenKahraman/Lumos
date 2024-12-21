@@ -1,7 +1,7 @@
 ﻿using System.Collections.Concurrent;
 using System.Text.Json.Serialization;
 
-namespace Lumos.Producer
+namespace Lumos.Producer.Models
 {
     public class MPDLMessageData
     {
@@ -48,24 +48,6 @@ namespace Lumos.Producer
 
             [JsonPropertyName("sid")]
             public Guid Id { get; set; }
-        }
-
-        public class StationWrapper
-        {
-            public StationWrapper(int dataLoggerCount, params string[] dataloggerName)
-            {
-                Data = new ConcurrentBag<MappedData>();
-                DataLoggerCount = dataLoggerCount;
-                DataloggerNames = new List<string>();
-                DataloggerNames.AddRange(dataloggerName);
-            }
-
-            public ConcurrentBag<MappedData> Data { get; set; }
-            public DateTime LastDataTime { get; set; }
-            public DateTime LastDataReceived { get; set; }
-            public int DataLoggerCount { get; set; }
-            public List<string> DataloggerNames { get; set; }
-            public int ReceivedPackageCount { get; set; }
         }
     }
 }
