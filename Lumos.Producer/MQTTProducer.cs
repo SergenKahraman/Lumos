@@ -6,6 +6,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using MQTTnet;
 using MQTTnet.Client;
+using System;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -21,8 +22,10 @@ namespace Lumos.Producer
         private MqttClientOptions mqttOptions;
         private MqttClientSubscribeOptions mqttSubscribeOptions;
         private Guid stationId;
+        private IServiceProvider serviceProvider;
         public async Task Produce(IServiceProvider serviceProvider)
         {
+            this.serviceProvider = serviceProvider;
             using var scope = serviceProvider.CreateScope();
             dbContext = scope.ServiceProvider.GetService<LumosDbContext>();
 
@@ -61,7 +64,8 @@ namespace Lumos.Producer
 
         private async Task Invoke(MqttApplicationMessageReceivedEventArgs args)
         {
-            var stationId = new Guid("1fafd91a-7601-4ab4-8fab-a2e34669fed9");
+            using var scope = serviceProvider.CreateScope();
+            dbContext = scope.ServiceProvider.GetService<LumosDbContext>();
             // Unzip and deserialize data package
             var options = new JsonSerializerOptions { NumberHandling = JsonNumberHandling.AllowReadingFromString };
             using var stream = new MemoryStream(args.ApplicationMessage.PayloadSegment.Array);
@@ -75,29 +79,32 @@ namespace Lumos.Producer
             var message = JsonSerializer.Deserialize<MPDLMessage>(json, options);
             // mapp and save
             var stationData = message.Stations.First(x => x.Id == stationId);
+            Console.WriteLine(stationData.Date);
             var mappedData = await HandleDeviceMapping(stationData);
 
             var entity = new InverterData
             {
                 Id = Guid.NewGuid(),
-                Date = stationData.Date,
+                Date = new DateTimeOffset(stationData.Date).UtcDateTime,
                 StationId = stationId,
                 DeviceDatas = mappedData
             };
 
             dbContext.InverterDatas.Add(entity);
-            await dbContext.SaveChangesAsync();
-
+            dbContext.SaveChanges();
         }
 
         private async Task<List<ProductionData>> HandleDeviceMapping(MPDLStation stationData)
         {
             var devicetagMappings = await dbContext.DeviceTagMappings.ToListAsync();
+            var adresses = devicetagMappings.Select(x => x.Address).ToList();
+            var devices = devicetagMappings.Select(x => x.DeviceId).ToList();
             var mappedData = new List<ProductionData>();
             foreach (var device in stationData.Devices)
             {
+                if (!devices.Contains(Guid.Parse(device.DeviceId))) continue;
                 var mappings = device.Mappings
-                                     .Where(x => devicetagMappings.Select(x => x.Address).Contains(x.Address))
+                                     .Where(x => adresses.Contains(x.Address))
                                      .Select(s => new ProductionData()
                                      {
                                          Value = s.Value,
